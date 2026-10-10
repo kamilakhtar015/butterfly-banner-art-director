@@ -4,15 +4,20 @@ import { apiBase, post } from "../lib/api";
 
 const EXAMPLES = ["fall boot sale for a rugged outdoor brand", "artisan cold brew coffee launch",
   "luxury scented candle for the holidays", "summer sneaker drop, streetwear", "handmade ceramic mugs, cozy"];
-const INTERVIEW_MSGS = ["Thinking of the next question…", "Reading your answer…", "Sharpening the brief…"];
-const RENDER_MSGS = ["Composing the shot…", "Mixing the palette…", "Adjusting the lighting…",
-  "Leaving space for your headline…", "Rendering pixels…", "Reviewing the proofs…"];
-const ARRANGE = [["auto", "Auto ✨"], ["left", "Left"], ["center", "Center"], ["right", "Right"], ["bottom", "Bottom"]];
+const ARRANGE = [["auto", "Auto"], ["left", "Left"], ["center", "Center"], ["right", "Right"], ["bottom", "Bottom"]];
+
+// Stage lists for the loading screen. Elapsed time is measured; the current stage is an
+// estimate, since the backend reports no granular progress.
+const RENDER_STAGES = [
+  ["Synthesising the brief", 0], ["Writing the copy", 3], ["Swapping the models", 8],
+  ["Rendering banner 1 of 2", 12], ["Rendering banner 2 of 2", 34], ["Art-director review", 56],
+];
+const ASK_STAGES = [["Reading your answer", 0], ["Sharpening the brief", 1], ["Writing the next question", 3]];
 
 function elDefs(cp) {
   const d = [];
   if (cp.brand) d.push({ key: "brand", kind: "brand", text: cp.brand, sz: 0.038, color: "#ffffff" });
-  d.push({ key: "kicker", kind: "kicker", text: cp.kicker || "NEW", sz: 0.03, color: "#ffffff", bg: "#ff7a59" });
+  d.push({ key: "kicker", kind: "kicker", text: cp.kicker || "NEW", sz: 0.03, color: "#ffffff", bg: "#e2662a" });
   d.push({ key: "headline", kind: "headline", text: cp.headline || "Headline", sz: 0.095, color: "#ffffff", font: "Anton" });
   d.push({ key: "cta", kind: "cta", text: cp.cta || "Shop Now", sz: 0.034, color: "#141414", bg: "#ffffff" });
   const c = [cp.contact, cp.social].filter(Boolean).join("   ");
@@ -21,14 +26,18 @@ function elDefs(cp) {
 }
 
 const TAIL = ["campaign", "offer", "format", "brand", "contact_social"];
-function dimIcon(axis) {
+
+// Each interview axis owns a hue, so the progress rail accumulates into a picture of the brief.
+function axisOf(axis) {
   const a = (axis || "").toLowerCase();
-  if (/appear|present|fram|look|product|shot|hero|subject/.test(a)) return "📦";
-  if (/set|back|environ|scene|place|venue|surround/.test(a)) return "📍";
-  if (/style|mood|light|colou?r|vibe|tone|aesthet|palette/.test(a)) return "🎨";
-  if (/campaign|occasion|offer|sale/.test(a)) return "📣";
-  if (/audience/.test(a)) return "👥";
-  return "✦";
+  if (/appear|present|fram|look|product|shot|hero|subject/.test(a)) return ["Shot", "var(--ax-shot)"];
+  if (/set|back|environ|scene|place|venue|surround/.test(a)) return ["Setting", "var(--ax-set)"];
+  if (/audience/.test(a)) return ["Audience", "var(--ax-aud)"];
+  if (/style|mood|light|colou?r|vibe|tone|aesthet|palette/.test(a)) return ["Mood", "var(--ax-mood)"];
+  if (/campaign|occasion|offer|sale/.test(a)) return ["Offer", "var(--ax-offer)"];
+  if (/brand/.test(a)) return ["Brand", "var(--ax-brand)"];
+  if (/contact|social/.test(a)) return ["Contact", "var(--ax-contact)"];
+  return ["Detail", "var(--ax-other)"];
 }
 
 function placeOf(img, mode) {
@@ -37,7 +46,7 @@ function placeOf(img, mode) {
 }
 function accentOf(img) {
   const L = (img && img.critique && img.critique.layout) || {};
-  return /^#[0-9a-f]{6}$/i.test(L.accent || "") ? L.accent : "#ff7a59";
+  return /^#[0-9a-f]{6}$/i.test(L.accent || "") ? L.accent : "#e2662a";
 }
 function scrimFor(place, dark) {
   const c = dark ? "255,255,255" : "0,0,0", a = dark ? 0.62 : 0.8;
@@ -45,6 +54,21 @@ function scrimFor(place, dark) {
   return center
     ? `radial-gradient(130% 120% at 50% 50%, transparent 18%, rgba(${c},${a}) 100%)`
     : `linear-gradient(${right ? "270deg" : "90deg"}, rgba(${c},${a}) 0%, rgba(${c},${a * 0.45}) 40%, transparent 72%)`;
+}
+
+function Logo({ size = 23 }) {
+  return (
+    <svg className="glyph" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <ellipse cx="9.8" cy="11.4" rx="7.1" ry="8.7" transform="rotate(-20 9.8 11.4)" fill="#e8942e" />
+      <ellipse cx="22.2" cy="11.4" rx="7.1" ry="8.7" transform="rotate(20 22.2 11.4)" fill="#e2662a" />
+      <ellipse cx="11.7" cy="22.3" rx="5.3" ry="6.3" transform="rotate(14 11.7 22.3)" fill="#dc5b45" />
+      <ellipse cx="20.3" cy="22.3" rx="5.3" ry="6.3" transform="rotate(-14 20.3 22.3)" fill="#b8413a" />
+      <rect x="14.4" y="2.4" width="3.2" height="27.2" rx="1.6" fill="#fff" />
+      <rect x="15.35" y="4.4" width="1.3" height="23.2" rx=".65" fill="#141417" />
+      <path d="M16 6.1c-.7-2.1-2-3.2-3.8-3.5M16 6.1c.7-2.1 2-3.2 3.8-3.5" stroke="#141417"
+        strokeWidth="1.15" strokeLinecap="round" fill="none" />
+    </svg>
+  );
 }
 
 export default function Page() {
@@ -56,16 +80,17 @@ export default function Page() {
   const [hasImage, setHasImage] = useState(false);
   const [productImage, setProductImage] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
-  const [uploadLabel, setUploadLabel] = useState("📷 Upload product photo");
+  const [uploadName, setUploadName] = useState("");
   const [size, setSize] = useState({ w: 1024, h: 576 });
   const [copy, setCopy] = useState({});
   const [images, setImages] = useState([]);
   const [scene, setScene] = useState("");
   const [baseline, setBaseline] = useState(null);     // "before" image: the brief rendered as typed
   const [finalPrompt, setFinalPrompt] = useState("");
-  const [arrange, setArrange] = useState("auto");
-  const [loadMsg, setLoadMsg] = useState("");
-  const [loadSub, setLoadSub] = useState("");
+  const [arranges, setArranges] = useState({});       // per banner, so each arranges independently
+  const [openNotes, setOpenNotes] = useState({});
+  const [selBanner, setSelBanner] = useState(null);
+  const [regenIdx, setRegenIdx] = useState(null);
   const [err, setErr] = useState("");
   const [otherText, setOtherText] = useState("");
   const [showOther, setShowOther] = useState(false);
@@ -73,25 +98,25 @@ export default function Page() {
   const [els, setEls] = useState({});
   const [sel, setSel] = useState(null);
   const [arrangeTick, setArrangeTick] = useState(0);
+  const [genKind, setGenKind] = useState("ask");
+  const [elapsed, setElapsed] = useState(0);
 
   const bannerRefs = useRef({});
   const elRefs = useRef({});
-  const loadTimer = useRef(null);
+  const tick = useRef(null);
   const initialJob = useRef("");   // background render of the "before" image (/start-initial)
 
-  // rotating loading messages
+  // elapsed clock for the loading screen
   useEffect(() => {
-    if (screen !== "s3") { clearInterval(loadTimer.current); return; }
-    const msgs = images.length === 0 && !question ? INTERVIEW_MSGS : (loadSub.includes("banner") ? RENDER_MSGS : INTERVIEW_MSGS);
-    let i = 0; setLoadMsg(msgs[0]);
-    loadTimer.current = setInterval(() => { i = (i + 1) % msgs.length; setLoadMsg(msgs[i]); }, 2000);
-    return () => clearInterval(loadTimer.current);
-  }, [screen, loadSub]); // eslint-disable-line
+    if (screen !== "s3") { clearInterval(tick.current); return; }
+    setElapsed(0);
+    tick.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(tick.current);
+  }, [screen, genKind]);
 
   // ---- interview ----
   async function askNext(ans) {
-    setScreen("s3");
-    setLoadSub(ans.length ? "Personalising the next question…" : "Interviewing you about the look…");
+    setGenKind("ask"); setScreen("s3"); setErr("");
     try {
       const res = await post("/next-question", { brief, answers: ans, has_image: hasImage });
       setProgress({ asked: res.asked || ans.length, total: res.total || 7 });
@@ -99,23 +124,34 @@ export default function Page() {
       setQuestion(res.question); setShowOther(false); setOtherText(""); setScreen("s2");
       // Question 1 is on screen: render the "before" image while the user reads and answers.
       if (!ans.length) post("/start-initial", { brief }).then(r => { initialJob.current = r.job; }).catch(() => {});
-    } catch (e) { setScreen("s1"); alert("Could not reach the art director.\n" + e.message); }
+    } catch (e) {
+      setErr("Couldn't reach the art director. " + e.message);
+      setScreen(ans.length ? "s2" : "s1");
+    }
   }
   function start() {
     const b = brief.trim(); if (!b) return;
-    setAnswers([]); setScene(""); setArrange("auto"); initialJob.current = ""; setBaseline(null); setFinalPrompt(""); askNextWith(b, []);
+    setAnswers([]); setScene(""); setArranges({}); initialJob.current = "";
+    setBaseline(null); setFinalPrompt(""); setBrief(b); askNext([]);
   }
-  function askNextWith(b, ans) { setBrief(b); askNext(ans); }
   function answer(q, ans, hint) {
     const item = { id: q.id || "", axis: q.axis || "", question: q.question, answer: ans, hint, group: q.group || "visual" };
     const next = [...answers, item]; setAnswers(next); askNext(next);
+  }
+  function back() {
+    if (!answers.length) { setScreen("s1"); return; }
+    askNext(answers.slice(0, -1));
+    setAnswers(answers.slice(0, -1));
+  }
+  function dropAnswer(i) {
+    const next = answers.filter((_, n) => n !== i);
+    setAnswers(next); askNext(next);
   }
 
   // ---- generate ----
   async function generate(extra, ansArg) {
     const ans = ansArg || answers;
-    setScreen("s3"); setErr("");
-    setLoadSub("Rendering 2 detailed banners + art-director review (~60s).");
+    setGenKind("render"); setScreen("s3"); setErr("");
     const body = { brief, answers: ans, extra_fragments: extra, has_image: hasImage, product_image: productImage };
     if (extra.length && scene) body.scene = scene;
     else if (initialJob.current) body.initial_job = initialJob.current;
@@ -129,57 +165,78 @@ export default function Page() {
       setImages(res.images || []);
       // init editor elements per banner
       const base = res.copy && res.copy.headline ? res.copy : copy;
-      const e = {}; (res.images || []).forEach((_, i) => e[i] = elDefs(base || {}));
-      setEls(e); setSel(null); setArrange("auto");
+      const e = {}, a = {};
+      (res.images || []).forEach((_, i) => { e[i] = elDefs(base || {}); a[i] = "auto"; });
+      setEls(e); setArranges(a); setSel(null); setRegenIdx(null);
       setScreen("s4");
       setTimeout(() => setArrangeTick(t => t + 1), 60);
-    } catch (e) { setScreen("s4"); setErr("Render failed: " + e.message + ". The model may be swapping — try again."); }
+    } catch (e) {
+      setScreen("s4"); setRegenIdx(null);
+      setErr("Render failed: " + e.message + " The models may be mid-swap — try again in a moment.");
+    }
   }
-  function applySuggestions() {
-    const frags = Object.values(checked).filter(Boolean);
-    if (!frags.length) { alert("Tick at least one suggestion to apply."); return; }
-    setChecked({}); generate(frags, answers);
+
+  // Suggestions are tracked per banner, so each banner refines on its own notes.
+  const fragsFor = (idx) => Object.entries(checked)
+    .filter(([k, v]) => v && k.startsWith(idx + ":")).map(([, v]) => v);
+
+  function regenerate(idx) {
+    const frags = fragsFor(idx);
+    if (!frags.length) return;
+    setRegenIdx(idx);
+    setChecked(c => {
+      const out = { ...c };
+      Object.keys(out).forEach(k => { if (k.startsWith(idx + ":")) delete out[k]; });
+      return out;
+    });
+    generate(frags, answers);
   }
 
   // ---- upload ----
   async function onUpload(ev) {
     const f = ev.target.files[0]; if (!f) return;
-    setUploadLabel("Uploading…");
+    setUploadName("Uploading…");
     try {
       const fd = new FormData(); fd.append("file", f);
       const r = await fetch(apiBase() + "/upload-product", { method: "POST", body: fd });
       if (!r.ok) throw new Error("upload " + r.status);
       const d = await r.json();
       setProductImage(d.product_image); setHasImage(true);
-      setPreviewUrl(apiBase() + d.url); setUploadLabel("📷 Product photo added");
-    } catch { setUploadLabel("📷 Upload failed — try again"); }
+      setPreviewUrl(apiBase() + d.url); setUploadName(f.name);
+    } catch { setUploadName(""); setErr("That photo didn't upload. Try a different file."); }
+  }
+  function clearUpload() {
+    setHasImage(false); setProductImage(""); setPreviewUrl(""); setUploadName("");
   }
 
-  // ---- editor: arrange + restack ----
-  const arrangeAll = useCallback((mode) => {
-    setArrange(mode);
+  // ---- editor: arrange one banner at a time ----
+  const arrangeOne = useCallback((idx, mode) => {
+    setArranges(prev => ({ ...prev, [idx]: mode }));
     setEls(prev => {
-      const out = {};
-      Object.keys(prev).forEach(k => {
-        const idx = +k; const list = prev[idx].map(e => ({ ...e }));
-        const place = placeOf(images[idx], mode);
-        const right = place.includes("right"), center = place.includes("center");
-        const dark = mode === "auto" && ((images[idx] && images[idx].critique && images[idx].critique.layout && images[idx].critique.layout.theme) || "light").toLowerCase() === "dark";
-        const accent = accentOf(images[idx]);
-        const x = right ? 0.93 : center ? 0.5 : 0.07;
-        list.forEach(e => {
-          e.xp = x * 100; e.anchor = right ? "right" : center ? "center" : "left";
-          if (mode === "auto") {
-            e.color = (dark && e.kind !== "kicker" && e.kind !== "cta") ? "#161616" : (e.kind === "cta" ? "#141414" : "#ffffff");
-            if (e.kind === "kicker") e.bg = accent;
-          }
-        });
-        out[idx] = list;
+      const list = (prev[idx] || []).map(e => ({ ...e }));
+      const place = placeOf(images[idx], mode);
+      const right = place.includes("right"), center = place.includes("center");
+      const dark = mode === "auto" && ((images[idx] && images[idx].critique && images[idx].critique.layout && images[idx].critique.layout.theme) || "light").toLowerCase() === "dark";
+      const accent = accentOf(images[idx]);
+      const x = right ? 0.93 : center ? 0.5 : 0.07;
+      list.forEach(e => {
+        e.xp = x * 100; e.anchor = right ? "right" : center ? "center" : "left";
+        if (mode === "auto") {
+          e.color = (dark && e.kind !== "kicker" && e.kind !== "cta") ? "#161616" : (e.kind === "cta" ? "#141414" : "#ffffff");
+          if (e.kind === "kicker") e.bg = accent;
+        }
       });
-      return out;
+      return { ...prev, [idx]: list };
     });
     setArrangeTick(t => t + 1);
   }, [images]);
+
+  // A fresh set of banners arrives unpositioned: run Auto once so every layer gets its
+  // x, anchor and colour before the stacking pass computes y.
+  useEffect(() => {
+    if (!images.length) return;
+    images.forEach((_, i) => arrangeOne(i, "auto"));
+  }, [images]); // eslint-disable-line
 
   // Keyboard shortcuts during the interview: 1-4 pick an option.
   useEffect(() => {
@@ -204,7 +261,7 @@ export default function Page() {
         const list = prev[idx].map(e => ({ ...e }));
         if (!banner) { out[idx] = list; return; }
         const bh = banner.clientHeight || 1;
-        const place = placeOf(images[idx], arrange);
+        const place = placeOf(images[idx], arranges[idx] || "auto");
         const gap = 0.024;
         const vis = list.filter(e => !e.hidden);
         const hs = vis.map(e => { const n = elRefs.current[idx + ":" + e.key]; return (n ? n.offsetHeight : bh * e.sz) / bh; });
@@ -223,7 +280,7 @@ export default function Page() {
     const node = ev.currentTarget;
     if (node.classList.contains("editing")) return;
     ev.preventDefault();
-    setSel({ idx, key: def.key });
+    setSel({ idx, key: def.key }); setSelBanner(idx);
     const banner = bannerRefs.current[idx]; const r = banner.getBoundingClientRect();
     const sx = ev.clientX, sy = ev.clientY, ox = def.xp, oy = def.yp;
     node.setPointerCapture(ev.pointerId); node.classList.add("drag");
@@ -270,212 +327,408 @@ export default function Page() {
       const blob = await r.blob(); const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = "banner-" + imgUrl.split("/").pop().replace(".png", "") + ".psd";
       a.click(); URL.revokeObjectURL(a.href);
-    } catch (e) { alert("PSD export failed: " + e.message); }
+    } catch (e) { setErr("PSD export failed: " + e.message); }
   }
 
-  const scorePills = (scores) => {
-    if (!scores) return null;
-    const nice = { focal_clarity: "Focus", text_safe_space: "Copy space", color_harmony: "Color", product_prominence: "Product", ad_polish: "Polish" };
-    return Object.entries(scores).map(([k, v]) => <span className="pill" key={k}>{nice[k] || k} <b>{v}/5</b></span>);
+  const scorePills = (scores, overall) => {
+    const nice = { focal_clarity: "Focus", text_safe_space: "Copy", color_harmony: "Color", product_prominence: "Product", ad_polish: "Polish" };
+    const out = Object.entries(scores || {}).map(([k, v]) => (
+      <span className="sp" key={k}>
+        <i className="d" style={{ background: v >= 4 ? "var(--good)" : v >= 3 ? "var(--mid)" : "var(--bad)" }} />
+        {nice[k] || k} <b>{v}</b>
+      </span>
+    ));
+    if (overall != null) out.push(<span className="sp ov" key="ov">Overall <b>{overall}/5</b></span>);
+    return out;
   };
+
+  const stages = genKind === "render" ? RENDER_STAGES : ASK_STAGES;
+  const stageNow = stages.reduce((acc, s, i) => (elapsed >= s[1] ? i : acc), 0);
+
+  const Bar = ({ right }) => (
+    <div className="bar">
+      <span className="mark"><Logo />ButterFly <em>Art Director</em></span>
+      <span className="bar-r">{right}</span>
+    </div>
+  );
+
+  const ErrBox = ({ onRetry }) => err ? (
+    <div className="errbox">
+      <span className="i">!</span>
+      <div className="t">
+        <h4>Something went wrong</h4>
+        <p>{err}</p>
+        <div className="acts">
+          {onRetry && <button className="btn btn-sec btn-sm" onClick={onRetry}>Try again</button>}
+          <button className="btn btn-sec btn-sm" onClick={() => setErr("")}>Dismiss</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="wrap">
-      <header><div className="logo" /><h1>ButterFly <small>· Banner Art Director</small></h1></header>
 
+      {/* ---------- s1 · brief ---------- */}
       {screen === "s1" && (
-        <section className="screen">
-          <div className="hero">
-            <h2>What are you trying to sell?</h2>
-            <p>Describe it in a few words. Your AI art director will interview you, then design it.</p>
-            <div className="inputrow">
-              <input type="text" value={brief} onChange={e => setBrief(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && start()} placeholder="e.g. fall boot sale for a rugged outdoor brand" autoComplete="off" />
-              <button className="cta" onClick={start}>Start interview →</button>
+        <>
+          <Bar />
+          <section className="screen">
+            <div className="body stagger">
+              <p className="kick">New brief</p>
+              <p className="h-big">What are you trying to sell?</p>
+              <p className="sub">A few words is enough.</p>
+              <div className="prompt">
+                <textarea value={brief} rows={2} autoComplete="off"
+                  placeholder="e.g. fall boot sale for a rugged outdoor brand"
+                  onChange={e => setBrief(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); start(); } }} />
+                <div className="prompt-foot">
+                  {hasImage ? (
+                    <span className="attach">
+                      {previewUrl && <img className="thumb" src={previewUrl} alt="" />}
+                      {uploadName || "Product photo"}
+                      <button className="rm" onClick={clearUpload} aria-label="Remove photo">✕</button>
+                    </span>
+                  ) : (
+                    <label className="attach">
+                      <span className="plus">+</span>{uploadName || "Product photo"}
+                      <input type="file" accept="image/*" hidden onChange={onUpload} />
+                    </label>
+                  )}
+                  <button className="btn btn-pri" onClick={start} disabled={!brief.trim()}>
+                    Start interview <span className="k">↵</span>
+                  </button>
+                </div>
+              </div>
+              <div className="tries">
+                <span className="lab">Try</span>
+                {EXAMPLES.slice(0, 3).map(e => (
+                  <button className="chip" key={e} onClick={() => setBrief(e)}>{e}</button>
+                ))}
+              </div>
+              <ErrBox />
             </div>
-            <div className="uploadrow">
-              <label className="uploadbtn">{uploadLabel}{!hasImage && <span style={{ opacity: .6 }}> (optional)</span>}
-                <input type="file" accept="image/*" hidden onChange={onUpload} />
-              </label>
-              {previewUrl && <img className="preview" src={previewUrl} alt="product" />}
-              {hasImage && <span className="chip" onClick={() => { setHasImage(false); setProductImage(""); setPreviewUrl(""); setUploadLabel("📷 Upload product photo"); }}>✕ remove</span>}
-            </div>
-            <div className="examples">
-              {EXAMPLES.map(e => <span className="chip" key={e} onClick={() => setBrief(e)}>{e}</span>)}
-            </div>
-          </div>
-        </section>
+          </section>
+        </>
       )}
 
+      {/* ---------- s2 · interview ---------- */}
       {screen === "s2" && question && (
-        <section className="screen">
-          <div className="brief-tag">Creative brief for <b>{brief}</b></div>
-          <div className="progress">
-            <div className="dots">{Array.from({ length: progress.total }).map((_, i) =>
-              <div key={i} className={"dot" + (i < progress.asked ? " on" : i === progress.asked ? " cur" : "")} />)}</div>
-            <span className="ptext">Question {progress.asked + 1} · gathering detail</span>
-          </div>
-          {answers.filter(a => !TAIL.includes(a.id)).length > 0 && (
-            <div className="dirstrip">
-              <span className="lab">Your direction:</span>
-              {answers.filter(a => !TAIL.includes(a.id)).map((a, i, arr) =>
-                <span className={"dirchip" + (i === arr.length - 1 ? " fresh" : "")} key={a.id + i}>
-                  <span className="k">{dimIcon(a.axis)}</span>{a.answer}
-                </span>)}
-            </div>
-          )}
-          {answers.length === 0 && (
-            <div className="promptbox">
-              <div className="pb-head">
-                <span className="pb-title">✨ Your starting prompt</span>
-                <span className="pb-after">exactly what you typed</span>
+        <>
+          <Bar right={<span className="bar-ctx">{brief}</span>} />
+          <section className="screen" key={answers.length}>
+            <div className="body">
+              <div className="rail">
+                {Array.from({ length: progress.total }).map((_, i) => (
+                  <span key={i} className={i < answers.length ? "f" : ""}
+                    style={i < answers.length ? { background: axisOf(answers[i].axis)[1] } : undefined} />
+                ))}
               </div>
-              <div className="pb-scene">{brief}</div>
-              <div className="pb-tip">This is all an image model would get if you typed your idea directly. We're rendering it in the background now — at the end, compare it with the image from the detailed prompt your answers build.</div>
-            </div>
-          )}
-          <div className="qbody" key={answers.length}>
-            {question.note && <div className="adnote"><span className="who">🎨</span><span>{question.note}</span></div>}
-            <div className="qtitle">{question.question}</div>
-            {question.type === "text" ? (
-              <div>
-                <div className="otherbox">
-                  <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
-                    placeholder={question.placeholder || "Type your answer…"} autoFocus />
-                  <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); else if (question.optional) answer(question, "(not needed)", ""); }}>Continue →</button>
+              <div className="step">
+                <span className="n">{String(answers.length + 1).padStart(2, "0")} / {progress.total}</span>
+                <button className="btn btn-sec btn-sm" onClick={back}>← Back</button>
+              </div>
+
+              {/* the question leads */}
+              <h2 className="q-h">{question.question}</h2>
+              {question.note && <div className="adnote"><span>🎨</span><span>{question.note}</span></div>}
+
+              {question.type === "text" ? (
+                <div>
+                  <div className="field">
+                    <input type="text" value={otherText} autoFocus
+                      placeholder={question.placeholder || "Type your answer…"}
+                      onChange={e => setOtherText(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())} />
+                    <button className="btn btn-pri" onClick={() => {
+                      const t = otherText.trim();
+                      if (t) answer(question, t, t);
+                      else if (question.optional) answer(question, "(not needed)", "");
+                    }}>Continue <span className="k">↵</span></button>
+                  </div>
+                  {question.optional && (
+                    <button className="skip" onClick={() => answer(question, "(not needed)", "")}>
+                      Skip — not needed on the banner
+                    </button>
+                  )}
                 </div>
-                {question.optional && <span className="chip" style={{ marginTop: 12, display: "inline-block" }} onClick={() => answer(question, "(not needed)", "")}>Skip — not needed on the banner</span>}
+              ) : (
+                <>
+                  <div className="cards" style={{ "--ax": axisOf(question.axis)[1] }}>
+                    {(question.options || []).map((o, i) => (
+                      <button className={"card" + (o.recommend ? " on" : "")} key={i}
+                        style={{ animationDelay: (i * 55) + "ms" }}
+                        onClick={e => {
+                          e.currentTarget.classList.add("just");
+                          answer(question, o.label, o.prompt_fragment || o.label);
+                        }}>
+                        <div className="card-top">
+                          <span className="key">{i + 1}</span>
+                          <span className="lbl">{o.label}</span>
+                          {o.recommend && <span className="rec">★ My pick</span>}
+                        </div>
+                        {o.prompt_fragment && <div className="frag">{o.prompt_fragment}</div>}
+                      </button>
+                    ))}
+                    {!question.no_other && (
+                      <button className="card other" onClick={() => setShowOther(true)}
+                        style={{ animationDelay: ((question.options || []).length * 55) + "ms" }}>
+                        <div className="card-top">
+                          <span className="key">{(question.options || []).length + 1}</span>
+                          <span className="lbl">✎ Describe it yourself</span>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+                  {showOther && (
+                    <div className="field" style={{ marginTop: 12 }}>
+                      <input type="text" value={otherText} autoFocus
+                        placeholder="e.g. on a wet city street at night, reflections…"
+                        onChange={e => setOtherText(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())} />
+                      <button className="btn btn-pri" onClick={() => {
+                        const t = otherText.trim(); if (t) answer(question, t, t);
+                      }}>Continue <span className="k">↵</span></button>
+                    </div>
+                  )}
+                  <p className="hint">Click a card or press <b>1–{(question.options || []).length}</b>.</p>
+                </>
+              )}
+
+              <ErrBox onRetry={() => askNext(answers)} />
+
+              {/* direction recap — only renders answers actually given */}
+              {answers.length > 0 && (
+                <div className="recap">
+                  <div className="recap-h">
+                    <span className="t">Your direction</span>
+                    <span className="c">{answers.length} of {progress.total}</span>
+                  </div>
+                  <div className="dirs">
+                    {answers.map((a, i) => {
+                      const ax = axisOf(a.axis);
+                      return (
+                        <span className="dchip" key={(a.id || "") + i} style={{ "--ax": ax[1] }}>
+                          <span className="dot" />
+                          <span className="ax">{ax[0]}</span>{a.answer}
+                          <button className="rm" onClick={() => dropAnswer(i)} aria-label="Remove">✕</button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* the brief as typed, rendered in the background for the before/after */}
+              {answers.length === 0 && (
+                <div className="promptbox">
+                  <div className="pb-head">
+                    <span className="pb-title">Your starting prompt</span>
+                    <span className="pb-after">exactly what you typed</span>
+                  </div>
+                  <div className="pb-scene">{brief}</div>
+                  <div className="pb-tip">This is all an image model would get if you typed your idea
+                    directly. We&apos;re rendering it in the background now — at the end, compare it with
+                    the image from the detailed prompt your answers build.</div>
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ---------- s3 · working ---------- */}
+      {screen === "s3" && (
+        <>
+          <Bar right={<span className="bar-ctx">{brief}</span>} />
+          <section className="screen">
+            <div className="gen">
+              <p className="gen-h">{genKind === "render" ? "Art-directing two banners" : "Thinking about your answer"}</p>
+              <p className="gen-s">
+                {genKind === "render"
+                  ? "About a minute on an M-series Mac. Nothing leaves this machine."
+                  : "A few seconds."} · {elapsed}s elapsed
+              </p>
+              <div className="stages">
+                {stages.map((s, i) => (
+                  <div className={"stg" + (i < stageNow ? " done" : i === stageNow ? " now" : "")} key={s[0]}>
+                    <span className="tick">{i < stageNow ? "✓" : ""}</span>
+                    <span className="t">{s[0]}</span>
+                  </div>
+                ))}
               </div>
-            ) : (
+              {genKind === "render" && (
+                <p className="swapnote">The image model and the vision model can&apos;t both fit in
+                  memory, so they take turns. The swap above is that pause — expected, not a stall.</p>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ---------- s4 · results + editor ---------- */}
+      {screen === "s4" && (
+        <>
+          <Bar right={<button className="btn btn-sec btn-sm" onClick={() => setScreen("s1")}>New brief</button>} />
+          <section className="screen">
+            <div className="body wide">
+              <div className="rhead">
+                <div>
+                  <p className="t">Two directions for {brief}</p>
+                  <p className="s">Pick one to refine · drag any text to move it · double-click to retype</p>
+                </div>
+              </div>
+
+              <div className="grid2">
+                {images.map((im, idx) => {
+                  const crit = im.critique || {};
+                  const mode = arranges[idx] || "auto";
+                  const place = placeOf(im, mode);
+                  const dark = mode === "auto" && ((crit.layout && crit.layout.theme) || "light").toLowerCase() === "dark";
+                  const nSel = fragsFor(idx).length;
+                  return (
+                    <div className={"bcard" + (selBanner === idx ? " sel" : "")} key={idx}>
+                      {/* each banner arranges on its own */}
+                      <div className="bhead">
+                        <span className="bno">Banner {idx + 1}{selBanner === idx ? " · selected" : ""}</span>
+                        <div className="arrpills">
+                          {ARRANGE.map(a => (
+                            <button key={a[0]} className={"ap" + (mode === a[0] ? " on" : "")}
+                              onClick={() => { setSelBanner(idx); arrangeOne(idx, a[0]); }}>{a[1]}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="banner" ref={n => bannerRefs.current[idx] = n}
+                        style={{ aspectRatio: `${size.w}/${size.h}`, backgroundImage: `url('${apiBase()}${im.url}')` }}
+                        onPointerDown={e => {
+                          if (e.target.classList.contains("banner") || e.target.classList.contains("scrim")) setSel(null);
+                          setSelBanner(idx);
+                        }}>
+                        <div className="scrim" style={{ background: scrimFor(place, dark) }} />
+                        {(els[idx] || []).filter(e => !e.hidden).map(def => (
+                          <div key={def.key} ref={n => elRefs.current[idx + ":" + def.key] = n}
+                            className={"el k-" + def.kind + (sel && sel.idx === idx && sel.key === def.key ? " sel" : "")}
+                            style={{
+                              left: (def.xp || 0) + "%", top: (def.yp || 0) + "%",
+                              transform: def.anchor === "right" ? "translateX(-100%)" : def.anchor === "center" ? "translateX(-50%)" : "none",
+                              fontSize: (def.sz * (bannerRefs.current[idx] ? bannerRefs.current[idx].clientHeight : 300)) + "px",
+                              color: def.color, background: def.bg || undefined,
+                              fontFamily: def.font ? `'${def.font}', Impact, system-ui, sans-serif` : undefined,
+                              maxWidth: def.kind === "headline" ? Math.round((bannerRefs.current[idx] ? bannerRefs.current[idx].clientWidth : 300) * 0.56) + "px" : undefined,
+                            }}
+                            onPointerDown={e => onElPointerDown(e, idx, def)}
+                            onDoubleClick={onElDblClick}
+                            onBlur={e => onElBlur(e, idx, def.key)}
+                            suppressContentEditableWarning>{def.text}</div>
+                        ))}
+                        {regenIdx === idx && (
+                          <div className="regen"><span className="ring" />Re-rendering with your notes…</div>
+                        )}
+                      </div>
+
+                      <div className="bfoot">
+                        <div className="scores">{scorePills(crit.scores, crit.overall)}</div>
+                        <button className={"disc" + (openNotes[idx] ? " open" : "")}
+                          onClick={() => { setSelBanner(idx); setOpenNotes(o => ({ ...o, [idx]: !o[idx] })); }}>
+                          Notes <span className="cv">⌄</span>
+                        </button>
+                      </div>
+
+                      {openNotes[idx] && (
+                        <div className="notes">
+                          <p className="verdict">{crit.verdict || "No critique available."}</p>
+                          <ul className="sugs">
+                            {(crit.suggestions || []).map((s, i) => {
+                              const key = idx + ":" + i;
+                              const on = !!checked[key];
+                              return (
+                                <li key={i}>
+                                  <button className={"sug" + (on ? " on" : "")}
+                                    onClick={() => setChecked(c => ({ ...c, [key]: on ? "" : (s.prompt_fragment || s.text || "") }))}>
+                                    <span className="box">✓</span>
+                                    <span>{s.text || s.prompt_fragment || ""}</span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          <div className="nacts">
+                            <button className="btn btn-pri btn-sm" disabled={!nSel || regenIdx !== null}
+                              onClick={() => regenerate(idx)}>
+                              ↻ Regenerate{nSel ? " with " + nSel + " note" + (nSel > 1 ? "s" : "") : ""}
+                            </button>
+                            <button className="btn btn-sec btn-sm" onClick={() => exportPsd(idx, im.url)}>⬇ .PSD</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <ErrBox />
+
+              {/* how the answers changed the prompt */}
+              {finalPrompt && (
+                <div className="compare">
+                  <div className="cmp-head">
+                    <span className="pb-title">How your answers changed the prompt</span>
+                    {baseline && images[0] && size.w === 1024 && size.h === 576 &&
+                      <span className="pb-after">same seed and size for both images — only the prompt changed</span>}
+                  </div>
+                  <div className="cmp-grid">
+                    {baseline && (
+                      <div className="cmp-col">
+                        <div className="cmp-lab">Before · from your brief alone</div>
+                        <img className="cmp-img" src={`${apiBase()}${baseline.url}`} alt="Image from the initial prompt" />
+                        <div className="pb-scene">{baseline.prompt}</div>
+                      </div>
+                    )}
+                    <div className="cmp-col after">
+                      <div className="cmp-lab">After · from your final prompt</div>
+                      {baseline && images[0] && <img className="cmp-img" src={`${apiBase()}${images[0].url}`} alt="Image from the final prompt" />}
+                      <div className="pb-scene">{finalPrompt}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* text properties: always present, with an empty state, so the controls are findable */}
+          <div className="editbar">
+            {selDef ? (
               <>
-                <div className="cards">
-                  {(question.options || []).map((o, i) =>
-                    <div className={"card" + (o.recommend ? " rec" : "")} key={i} style={{ animationDelay: (i * 55) + "ms" }}
-                      onClick={() => answer(question, o.label, o.prompt_fragment || o.label)}>
-                      <span className="kbd">{i + 1}</span>
-                      <div className="lbl">{o.label}</div>
-                      <div className="frag">{o.prompt_fragment || ""}</div>
-                      {o.recommend && <div className="recbadge">★ My pick</div>}
-                    </div>)}
-                  {!question.no_other &&
-                    <div className="card other" style={{ animationDelay: ((question.options || []).length * 55) + "ms" }} onClick={() => setShowOther(true)}>
-                      <div className="lbl">✎ Other…</div><div className="frag">Describe it in your own words</div>
-                    </div>}
-                </div>
-                {showOther && <div className="otherbox" style={{ display: "flex" }}>
-                  <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
-                    placeholder="e.g. on a wet city street at night, reflections…" autoFocus />
-                  <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); }}>Continue →</button>
-                </div>}
+                <span className="eb-title">{selDef.kind.charAt(0).toUpperCase() + selDef.kind.slice(1)}</span>
+                <div className="grp">Size
+                  <input type="range" min="1" max="22" step="0.2" value={Math.round(selDef.sz * 100)}
+                    onChange={e => updateSel({ sz: +e.target.value / 100 })} /></div>
+                <div className="grp">Colour
+                  <input type="color" value={selDef.color || "#ffffff"}
+                    onChange={e => updateSel({ color: e.target.value })} /></div>
+                {(selDef.kind === "kicker" || selDef.kind === "cta") && (
+                  <div className="grp">Fill
+                    <input type="color" value={selDef.bg || "#ffffff"}
+                      onChange={e => updateSel({ bg: e.target.value })} /></div>
+                )}
+                {selDef.kind === "headline" && (
+                  <div className="grp">Font
+                    <select value={selDef.font || "Anton"} onChange={e => updateSel({ font: e.target.value })}>
+                      <option value="Anton">Anton (display)</option>
+                      <option value="ArchivoX">Archivo (bold)</option>
+                      <option value="system-ui">System</option>
+                    </select></div>
+                )}
+                <button className="btn btn-sec btn-sm" onClick={hideSel}>Hide</button>
+                <button className="btn btn-pri btn-sm" onClick={() => setSel(null)}>Done</button>
               </>
+            ) : (
+              <span className="eb-empty">Click any text on a banner to change its size, colour and font.</span>
             )}
           </div>
-          <div className="finishrow"><button className="ghost" onClick={() => setScreen("s1")}>← Start over</button></div>
-          <div className="hint">Tap a card or press <b>1–4</b> · choose <b>Other</b> to type your own. Your direction builds up top as you go.</div>
-        </section>
-      )}
-
-      {screen === "s3" && (
-        <section className="screen">
-          <div className="loading"><div className="spin" /><div className="loadmsg">{loadMsg}</div><div className="loadsub">{loadSub}</div></div>
-        </section>
-      )}
-
-      {screen === "s4" && (
-        <section className="screen">
-          <div className="results-head">
-            <div className="brief-tag" style={{ margin: 0 }}>Your banners for <b>{brief}</b> · <span style={{ color: "var(--muted)" }}>drag any text · double-click to retype</span></div>
-            <button className="ghost" onClick={() => { setScreen("s1"); }}>New brief</button>
-          </div>
-          <div className="arrbar"><span className="lab">Arrange:</span>
-            {ARRANGE.map(([k, label]) => <span key={k} className={"spill" + (arrange === k ? " on" : "")} onClick={() => arrangeAll(k)}>{label}</span>)}
-          </div>
-          <div className="banners">
-            {images.map((im, idx) => {
-              const crit = im.critique || {};
-              const place = placeOf(im, arrange);
-              const dark = arrange === "auto" && ((crit.layout && crit.layout.theme) || "light").toLowerCase() === "dark";
-              return (
-                <div className="banner-card" key={idx}>
-                  <div className="banner" ref={n => bannerRefs.current[idx] = n}
-                    style={{ aspectRatio: `${size.w}/${size.h}`, backgroundImage: `url('${apiBase()}${im.url}?t=${Date.now()}')` }}
-                    onPointerDown={e => { if (e.target.classList.contains("banner") || e.target.classList.contains("scrim")) setSel(null); }}>
-                    <div className="scrim" style={{ background: scrimFor(place, dark) }} />
-                    {(els[idx] || []).filter(e => !e.hidden).map(def =>
-                      <div key={def.key} ref={n => elRefs.current[idx + ":" + def.key] = n}
-                        className={"el k-" + def.kind + (sel && sel.idx === idx && sel.key === def.key ? " sel" : "")}
-                        style={{
-                          left: (def.xp || 0) + "%", top: (def.yp || 0) + "%",
-                          transform: def.anchor === "right" ? "translateX(-100%)" : def.anchor === "center" ? "translateX(-50%)" : "none",
-                          fontSize: (def.sz * (bannerRefs.current[idx] ? bannerRefs.current[idx].clientHeight : 300)) + "px",
-                          color: def.color, background: def.bg || undefined,
-                          fontFamily: def.font ? `'${def.font}', Impact, system-ui, sans-serif` : undefined,
-                          maxWidth: def.kind === "headline" ? Math.round((bannerRefs.current[idx] ? bannerRefs.current[idx].clientWidth : 300) * 0.56) + "px" : undefined,
-                        }}
-                        onPointerDown={e => onElPointerDown(e, idx, def)}
-                        onDoubleClick={onElDblClick}
-                        onBlur={e => onElBlur(e, idx, def.key)}
-                        suppressContentEditableWarning>{def.text}</div>)}
-                  </div>
-                  <div className="crit">
-                    <div className="scorebar">{scorePills(crit.scores)}{crit.overall != null && <span className="pill">Overall <b>{crit.overall}/5</b></span>}</div>
-                    <div className="verdict">{crit.verdict || "No critique available."}</div>
-                    <ul className="sugs">{(crit.suggestions || []).map((s, i) =>
-                      <li className="sug" key={i}>
-                        <input type="checkbox" checked={!!checked[idx + ":" + i]} onChange={e => setChecked(c => ({ ...c, [idx + ":" + i]: e.target.checked ? (s.prompt_fragment || "") : "" }))} />
-                        <span>{s.text || s.prompt_fragment || ""}</span>
-                      </li>)}</ul>
-                    <button className="ghost" style={{ width: "100%", marginTop: 4 }} onClick={() => exportPsd(idx, im.url)}>⬇ Export layered .PSD</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="applybar"><button className="cta" onClick={applySuggestions}>↻ Apply selected suggestions & re-roll</button></div>
-          <div className="hint" style={{ textAlign: "center" }}>Drag text to move it · double-click to retype · click to select & restyle below.</div>
-          {finalPrompt && (
-            <div className="compare">
-              <div className="cmp-head">
-                <span className="pb-title">✨ How your answers changed the prompt</span>
-                {baseline && images[0] && size.w === 1024 && size.h === 576 && <span className="pb-after">same seed and size for both images — only the prompt changed</span>}
-              </div>
-              <div className="cmp-grid">
-                {baseline && (
-                  <div className="cmp-col">
-                    <div className="cmp-lab">Before · from your brief alone</div>
-                    <img className="cmp-img" src={`${apiBase()}${baseline.url}?t=${Date.now()}`} alt="Image from the initial prompt" />
-                    <div className="pb-scene">{baseline.prompt}</div>
-                  </div>
-                )}
-                <div className="cmp-col">
-                  <div className="cmp-lab">After · from your final prompt</div>
-                  {baseline && images[0] && <img className="cmp-img" src={`${apiBase()}${images[0].url}?t=${Date.now()}`} alt="Image from the final prompt" />}
-                  <div className="pb-scene">{finalPrompt}</div>
-                </div>
-              </div>
-            </div>
-          )}
-          {err && <div className="err">{err}</div>}
-        </section>
-      )}
-
-      {selDef && (
-        <div className="editbar show">
-          <span className="eb-title">{selDef.kind.charAt(0).toUpperCase() + selDef.kind.slice(1)}</span>
-          <div className="grp">Size <input type="range" min="1" max="22" step="0.2" value={Math.round(selDef.sz * 100)} onChange={e => updateSel({ sz: +e.target.value / 100 })} /></div>
-          <div className="grp">Color <input type="color" value={selDef.color || "#ffffff"} onChange={e => updateSel({ color: e.target.value })} /></div>
-          {(selDef.kind === "kicker" || selDef.kind === "cta") &&
-            <div className="grp">Fill <input type="color" value={selDef.bg || "#ffffff"} onChange={e => updateSel({ bg: e.target.value })} /></div>}
-          {selDef.kind === "headline" &&
-            <div className="grp">Font
-              <select value={selDef.font || "Anton"} onChange={e => updateSel({ font: e.target.value })}>
-                <option value="Anton">Anton (display)</option><option value="ArchivoX">Archivo (bold)</option><option value="system-ui">System</option>
-              </select></div>}
-          <button className="eb-btn" onClick={hideSel}>Hide</button>
-          <button className="eb-btn" onClick={() => setSel(null)}>Done</button>
-        </div>
+        </>
       )}
     </div>
   );
