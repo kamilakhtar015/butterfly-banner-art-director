@@ -148,3 +148,20 @@ button:active,.cta:active,.ghost:active,.spill:active{transform:scale(.97)}
 .dirchip.pulse{box-shadow:0 0 0 2px var(--accent)}
 @keyframes popc{0%{transform:scale(.85);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
 .dirchip.fresh{animation:popc .4s ease both}
+
+/* ---- initial vs final prompt ---- */
+.promptbox{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:12px;padding:14px 16px;margin:0 0 18px;animation:cardin .3s ease both}
+.pb-head,.cmp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.pb-title{font-weight:700;font-size:13px;color:var(--ink)}
+.pb-after{color:var(--muted);font-size:12px;font-style:italic}
+.pb-scene{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;color:var(--ink);
+  max-height:150px;overflow-y:auto;overflow-wrap:anywhere}
+.pb-tip{margin-top:10px;color:var(--muted);font-size:11.5px}
+.compare{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-top:22px}
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
+@media(max-width:760px){.cmp-grid{grid-template-columns:1fr}}
+.cmp-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.cmp-lab{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--accent)}
+.cmp-img{width:100%;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block}
+.compare .pb-scene{max-height:200px}

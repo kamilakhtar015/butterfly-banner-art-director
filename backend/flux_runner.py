@@ -26,7 +26,8 @@ class FluxRunner:
         log.info("FLUX loaded in %.1fs", time.time() - t0)
 
     def generate(self, prompt: str, seed: int, width: int = DEF_W, height: int = DEF_H,
-                 image_path: str | None = None, image_strength: float | None = None) -> Path:
+                 image_path: str | None = None, image_strength: float | None = None,
+                 name: str | None = None) -> Path:
         OUT_DIR.mkdir(exist_ok=True)
         t0 = time.time()
         kwargs = dict(seed=seed, prompt=prompt, height=height, width=width)
@@ -36,7 +37,7 @@ class FluxRunner:
         else:
             kwargs.update(num_inference_steps=TXT2IMG_STEPS)
         img = self._flux.generate_image(**kwargs)
-        out = OUT_DIR / f"banner_{seed}.png"
+        out = OUT_DIR / f"{name or 'banner'}_{seed}.png"
         # mflux's save() auto-increments instead of overwriting; remove target first.
         if out.exists():
             out.unlink()
