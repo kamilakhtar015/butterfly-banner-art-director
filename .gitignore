@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+node_modules/
+.next/
+frontend/out/
+frontend/.env.local
+npm-debug.log*
+
+# Downloaded models (fetched on first run)
+*.pt
+*.onnx
+
+# Generated banners, uploads, PSDs
+backend/outputs/
+
+# Logs & scratch / test artifacts
+*.log
+backend/*.json
+.DS_Store
