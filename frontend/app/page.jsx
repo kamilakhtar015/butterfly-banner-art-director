@@ -61,6 +61,8 @@ export default function Page() {
   const [copy, setCopy] = useState({});
   const [images, setImages] = useState([]);
   const [scene, setScene] = useState("");
+  const [baseline, setBaseline] = useState(null);     // "before" image: the brief rendered as typed
+  const [finalPrompt, setFinalPrompt] = useState("");
   const [arrange, setArrange] = useState("auto");
   const [loadMsg, setLoadMsg] = useState("");
   const [loadSub, setLoadSub] = useState("");
@@ -75,6 +77,7 @@ export default function Page() {
   const bannerRefs = useRef({});
   const elRefs = useRef({});
   const loadTimer = useRef(null);
+  const initialJob = useRef("");   // background render of the "before" image (/start-initial)
 
   // rotating loading messages
   useEffect(() => {
@@ -94,11 +97,13 @@ export default function Page() {
       setProgress({ asked: res.asked || ans.length, total: res.total || 7 });
       if (res.done || !res.question) { generate([], ans); return; }
       setQuestion(res.question); setShowOther(false); setOtherText(""); setScreen("s2");
+      // Question 1 is on screen: render the "before" image while the user reads and answers.
+      if (!ans.length) post("/start-initial", { brief }).then(r => { initialJob.current = r.job; }).catch(() => {});
     } catch (e) { setScreen("s1"); alert("Could not reach the art director.\n" + e.message); }
   }
   function start() {
     const b = brief.trim(); if (!b) return;
-    setAnswers([]); setScene(""); setArrange("auto"); askNextWith(b, []);
+    setAnswers([]); setScene(""); setArrange("auto"); initialJob.current = ""; setBaseline(null); setFinalPrompt(""); askNextWith(b, []);
   }
   function askNextWith(b, ans) { setBrief(b); askNext(ans); }
   function answer(q, ans, hint) {
@@ -113,9 +118,12 @@ export default function Page() {
     setLoadSub("Rendering 2 detailed banners + art-director review (~60s).");
     const body = { brief, answers: ans, extra_fragments: extra, has_image: hasImage, product_image: productImage };
     if (extra.length && scene) body.scene = scene;
+    else if (initialJob.current) body.initial_job = initialJob.current;
     try {
       const res = await post("/generate-banner", body);
       if (res.scene) setScene(res.scene);
+      if (res.prompt) setFinalPrompt(res.prompt);
+      if (res.initial) setBaseline(res.initial);
       if (res.copy && res.copy.headline) setCopy(res.copy);
       if (res.size) setSize(res.size);
       setImages(res.images || []);
@@ -316,6 +324,16 @@ export default function Page() {
                 </span>)}
             </div>
           )}
+          {answers.length === 0 && (
+            <div className="promptbox">
+              <div className="pb-head">
+                <span className="pb-title">✨ Your starting prompt</span>
+                <span className="pb-after">exactly what you typed</span>
+              </div>
+              <div className="pb-scene">{brief}</div>
+              <div className="pb-tip">This is all an image model would get if you typed your idea directly. We're rendering it in the background now — at the end, compare it with the image from the detailed prompt your answers build.</div>
+            </div>
+          )}
           <div className="qbody" key={answers.length}>
             {question.note && <div className="adnote"><span className="who">🎨</span><span>{question.note}</span></div>}
             <div className="qtitle">{question.question}</div>
@@ -417,6 +435,28 @@ export default function Page() {
           </div>
           <div className="applybar"><button className="cta" onClick={applySuggestions}>↻ Apply selected suggestions & re-roll</button></div>
           <div className="hint" style={{ textAlign: "center" }}>Drag text to move it · double-click to retype · click to select & restyle below.</div>
+          {finalPrompt && (
+            <div className="compare">
+              <div className="cmp-head">
+                <span className="pb-title">✨ How your answers changed the prompt</span>
+                {baseline && images[0] && size.w === 1024 && size.h === 576 && <span className="pb-after">same seed and size for both images — only the prompt changed</span>}
+              </div>
+              <div className="cmp-grid">
+                {baseline && (
+                  <div className="cmp-col">
+                    <div className="cmp-lab">Before · from your brief alone</div>
+                    <img className="cmp-img" src={`${apiBase()}${baseline.url}?t=${Date.now()}`} alt="Image from the initial prompt" />
+                    <div className="pb-scene">{baseline.prompt}</div>
+                  </div>
+                )}
+                <div className="cmp-col">
+                  <div className="cmp-lab">After · from your final prompt</div>
+                  {baseline && images[0] && <img className="cmp-img" src={`${apiBase()}${images[0].url}?t=${Date.now()}`} alt="Image from the final prompt" />}
+                  <div className="pb-scene">{finalPrompt}</div>
+                </div>
+              </div>
+            </div>
+          )}
           {err && <div className="err">{err}</div>}
         </section>
       )}

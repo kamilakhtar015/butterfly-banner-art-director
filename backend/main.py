@@ -7,6 +7,7 @@ Endpoints:
   GET  /outputs/<file>   -> the generated PNGs
 """
 import logging
+import threading
 import uuid
 from pathlib import Path
 
@@ -64,6 +65,7 @@ class BannerReq(BaseModel):
     img_strength: float | None = None  # img2img strength override (tuning)
     scene: str = ""                   # refine: reuse the already-synthesized scene
     extra_fragments: list[str] = []   # refine: appended suggestion fragments
+    initial_job: str = ""             # /start-initial job id: the brief-only "before" image
 
 
 def _answers(req) -> list[dict]:
@@ -120,6 +122,48 @@ async def upload_product(file: UploadFile = File(...)):
 
 
 _BAD_LABELS = ("other", "something else", "none", "none of these")
+
+
+# ---- "before" image -------------------------------------------------------
+# The brief exactly as the user typed it, rendered with no refinement, so the final page can
+# show what the interview added. It renders in a background thread during the interview; the
+# model lock makes it take turns with the VLM (they can't both fit in memory).
+_initial_jobs: dict[str, dict] = {}
+
+
+class InitialReq(BaseModel):
+    brief: str
+
+
+@app.post("/start-initial")
+def start_initial(req: InitialReq):
+    if not req.brief.strip():
+        raise HTTPException(400, "brief is empty")
+    job_id = uuid.uuid4().hex[:12]
+    job = {"done": threading.Event(), "prompt": req.brief.strip(), "url": None}
+    _initial_jobs[job_id] = job
+
+    def render():
+        try:
+            with manager.with_flux() as flux:
+                p = flux.generate(job["prompt"], seed=SEEDS[0], name=f"initial_{job_id}")
+            job["url"] = f"/outputs/{p.name}"
+        except Exception:
+            log.exception("initial image failed")
+        finally:
+            job["done"].set()
+
+    threading.Thread(target=render, daemon=True).start()
+    return {"job": job_id}
+
+
+def _initial_result(job_id: str) -> dict | None:
+    """Waits for the background render if it is somehow still running (it holds the model
+    lock, so it finishes as soon as this request releases FLUX)."""
+    job = _initial_jobs.pop(job_id, None)
+    if not job or not job["done"].wait(timeout=300) or not job["url"]:
+        return None
+    return {"url": job["url"], "prompt": job["prompt"]}
 
 
 @app.post("/next-question")
@@ -302,7 +346,8 @@ def generate_banner(req: BannerReq):
             images.append({"url": f"/outputs/{p.name}", "seed": _seed_of(p), "critique": crit})
 
     return {"copy": copy, "prompt": flux_prompt, "scene": scene,
-            "size": {"w": width, "h": height}, "images": images}
+            "size": {"w": width, "h": height}, "images": images,
+            "initial": _initial_result(req.initial_job) if req.initial_job and not refine else None}
 
 
 def _seed_of(path):
