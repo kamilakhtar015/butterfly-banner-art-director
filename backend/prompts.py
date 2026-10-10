@@ -54,10 +54,14 @@ reference things the client ACTUALLY said — never invent details they haven't 
 NEW facet (a follow-up is fine only if it opens a clearly different subject), or set done.
 - Across the whole session, make sure you cover three DIFFERENT things: the subject/product itself, its \
 setting, and its visual style — then finish.
-- Prefer type "choice": 3-4 specific, vivid options, each with a "prompt_fragment" (a visual phrase), and mark \
-exactly ONE "recommend": true. Use type "text" (with a "placeholder") only when the answer must be the client's \
-own words — above all, describing the product's appearance when no photo was uploaded.
-- If NO photo was uploaded and the product's appearance has NOT been described yet, make this a "text" question.
+- ALMOST ALWAYS use type "choice": give 3-4 specific, vivid options (each with a "prompt_fragment", a visual \
+phrase) and mark exactly ONE "recommend": true. The UI automatically adds an "Other" card so the user can type \
+a custom answer when nothing fits — so you do NOT need a text box to capture something unusual.
+- If NO photo was uploaded, your FIRST question should pin down the product's APPEARANCE — but still as a \
+"choice" with 3-4 plausible looks for THIS product (e.g. for coffee: "Dark roasted beans", "Creamy iced latte", \
+"Beans spilling from a burlap sack", "Latte art in a ceramic cup"). The user taps "Other" to describe their own.
+- Use type "text" ONLY as a true last resort, when options genuinely cannot be offered — which in the creative \
+phase is essentially never.
 - Ask at least {min_q} and at most {max_q} creative questions. Set "done": true ONLY once you can picture the \
 scene (the subject/product, its setting, and its visual style are all covered) — then stop, don't pad.
 
@@ -71,22 +75,52 @@ def next_creative_system_prompt() -> str:
     return NEXT_CREATIVE_SYSTEM.format(min_q=CREATIVE_MIN, max_q=CREATIVE_MAX)
 
 
+# The three creative dimensions we guarantee coverage of, each matched by keywords so we can
+# tell the VLM exactly which one to ask next (prevents it fixating on one, e.g. 3x "appearance").
+_CANON = {
+    "the PRODUCT itself (its appearance / how it's framed)":
+        ("appear", "present", "fram", "look", "product", "shot", "close", "hero", "angle", "subject"),
+    "the SETTING (where it sits / the backdrop)":
+        ("setting", "background", "backdrop", "environment", "scene", "place", "location", "surround", "venue"),
+    "the STYLE (mood + lighting + color)":
+        ("style", "mood", "light", "color", "colour", "vibe", "tone", "aesthetic", "palette", "atmosphere"),
+}
+
+
+def _remaining_dims(has_image: bool, answers: list[dict]) -> list[str]:
+    covered = set()
+    if has_image:  # the uploaded photo already covers the product's appearance
+        covered.add(list(_CANON)[0])
+    for a in answers:
+        if a.get("id") in TAIL_IDS:
+            continue
+        text = (str(a.get("axis", "")) + " " + str(a.get("question", ""))).lower()
+        for dim, kws in _CANON.items():
+            if any(k in text for k in kws):
+                covered.add(dim)
+    return [d for d in _CANON if d not in covered]
+
+
 def next_creative_user_prompt(brief: str, has_image: bool, answers: list[dict],
                               force: bool = False, redirect_from: str = "") -> str:
     photo = "A product photo WAS uploaded." if has_image else "NO product photo was uploaded."
     covered = "; ".join(a.get("axis") or a.get("question", "?") for a in answers
                         if a.get("id") not in TAIL_IDS) or "(none yet)"
-    tail = (f"\n\nYou have asked {creative_count(answers)} creative question(s) "
-            f"(min {CREATIVE_MIN}, max {CREATIVE_MAX}). Decide the next creative question — a follow-up on their "
-            "last answer or a new dimension — or set done.")
+    remaining = _remaining_dims(has_image, answers)
+    if remaining:
+        tail = (f"\n\nStill to cover: {remaining[0]}. Ask ONE 'choice' question about THAT next — do not re-ask "
+                "a dimension already covered above.")
+    else:
+        tail = (f"\n\nThe product, setting, and style are all covered ({creative_count(answers)} questions). "
+                "Either ask one optional deepening follow-up on a NEW detail, or set done=true now.")
     if force:
-        tail = ("\n\nThe brief is still too thin — you MUST ask another creative question now "
+        tail = ("\n\nThe brief is still too thin — you MUST ask another creative 'choice' question now "
                 "(return a question, not done).")
     if redirect_from:
-        tail = (f"\n\nYou just proposed another '{redirect_from}' question, but that subject is ALREADY covered. "
-                "Ask about a COMPLETELY DIFFERENT subject now (if the look is covered, move to the setting; if "
-                "the setting is covered, move to the visual style), or set done.")
-    return _format_answers(brief, answers) + f"\n\n{photo}\nCreative dimensions already covered: {covered}." + tail
+        nxt = remaining[0] if remaining else "a genuinely new detail"
+        tail = (f"\n\nYou just proposed another '{redirect_from}' question, but that is ALREADY covered. "
+                f"Ask instead about {nxt}, as a 'choice' question.")
+    return _format_answers(brief, answers) + f"\n\n{photo}\nDimensions already covered: {covered}." + tail
 
 
 # Universal steps after the creative phase (every banner needs these).

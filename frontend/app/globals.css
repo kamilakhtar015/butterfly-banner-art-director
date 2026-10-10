@@ -132,3 +132,19 @@ button.cta:disabled{opacity:.5;cursor:default}
 button,.spill,.card,.chip{transition:transform .08s ease, border-color .15s ease, box-shadow .15s ease}
 button:active,.cta:active,.ghost:active,.spill:active{transform:scale(.97)}
 .banner-card{transition:transform .2s ease, box-shadow .2s ease}
+
+/* ---- interactive interview ---- */
+@keyframes qin{from{opacity:0;transform:translateX(22px)}to{opacity:1;transform:none}}
+.qbody{animation:qin .34s cubic-bezier(.2,.8,.2,1)}
+@keyframes cardin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.cards .card{animation:cardin .34s ease both}
+.dirstrip{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 18px}
+.dirchip{display:flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--ink);animation:cardin .3s ease both;white-space:nowrap}
+.dirchip .k{opacity:.55;font-size:13px}
+.dirstrip .lab{color:var(--muted);font-size:12px;align-self:center;margin-right:2px}
+.card .kbd{position:absolute;top:8px;right:10px;font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;line-height:15px}
+.card{position:relative}
+.dirchip.pulse{box-shadow:0 0 0 2px var(--accent)}
+@keyframes popc{0%{transform:scale(.85);opacity:0}60%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+.dirchip.fresh{animation:popc .4s ease both}

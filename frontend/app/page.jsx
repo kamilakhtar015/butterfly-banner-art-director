@@ -20,6 +20,17 @@ function elDefs(cp) {
   return d;
 }
 
+const TAIL = ["campaign", "offer", "format", "brand", "contact_social"];
+function dimIcon(axis) {
+  const a = (axis || "").toLowerCase();
+  if (/appear|present|fram|look|product|shot|hero|subject/.test(a)) return "📦";
+  if (/set|back|environ|scene|place|venue|surround/.test(a)) return "📍";
+  if (/style|mood|light|colou?r|vibe|tone|aesthet|palette/.test(a)) return "🎨";
+  if (/campaign|occasion|offer|sale/.test(a)) return "📣";
+  if (/audience/.test(a)) return "👥";
+  return "✦";
+}
+
 function placeOf(img, mode) {
   const L = (img && img.critique && img.critique.layout) || {};
   return (mode === "auto" ? (L.placement || "left") : mode).toLowerCase();
@@ -162,6 +173,19 @@ export default function Page() {
     setArrangeTick(t => t + 1);
   }, [images]);
 
+  // Keyboard shortcuts during the interview: 1-4 pick an option.
+  useEffect(() => {
+    if (screen !== "s2" || !question || question.type !== "choice") return;
+    const h = (e) => {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+      const n = parseInt(e.key, 10);
+      const opts = question.options || [];
+      if (n >= 1 && n <= opts.length) { const o = opts[n - 1]; answer(question, o.label, o.prompt_fragment || o.label); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [screen, question]); // eslint-disable-line
+
   // Measure rendered heights and stack vertically with no overlap.
   useLayoutEffect(() => {
     if (screen !== "s4") return;
@@ -283,42 +307,55 @@ export default function Page() {
               <div key={i} className={"dot" + (i < progress.asked ? " on" : i === progress.asked ? " cur" : "")} />)}</div>
             <span className="ptext">Question {progress.asked + 1} · gathering detail</span>
           </div>
-          {question.note && <div className="adnote"><span className="who">🎨</span><span>{question.note}</span></div>}
-          <div className="qtitle">{question.question}</div>
-          {question.type === "text" ? (
-            <div>
-              <div className="otherbox">
-                <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
-                  placeholder={question.placeholder || "Type your answer…"} autoFocus />
-                <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); else if (question.optional) answer(question, "(not needed)", ""); }}>Continue →</button>
-              </div>
-              {question.optional && <span className="chip" style={{ marginTop: 12, display: "inline-block" }} onClick={() => answer(question, "(not needed)", "")}>Skip — not needed on the banner</span>}
+          {answers.filter(a => !TAIL.includes(a.id)).length > 0 && (
+            <div className="dirstrip">
+              <span className="lab">Your direction:</span>
+              {answers.filter(a => !TAIL.includes(a.id)).map((a, i, arr) =>
+                <span className={"dirchip" + (i === arr.length - 1 ? " fresh" : "")} key={a.id + i}>
+                  <span className="k">{dimIcon(a.axis)}</span>{a.answer}
+                </span>)}
             </div>
-          ) : (
-            <>
-              <div className="cards">
-                {(question.options || []).map((o, i) =>
-                  <div className={"card" + (o.recommend ? " rec" : "")} key={i} onClick={() => answer(question, o.label, o.prompt_fragment || o.label)}>
-                    <div className="lbl">{o.label}</div>
-                    <div className="frag">{o.prompt_fragment || ""}</div>
-                    {o.recommend && <div className="recbadge">★ My pick</div>}
-                  </div>)}
-                {!question.no_other &&
-                  <div className="card other" onClick={() => setShowOther(true)}>
-                    <div className="lbl">✎ Other…</div><div className="frag">Describe it in your own words</div>
-                  </div>}
-              </div>
-              {showOther && <div className="otherbox" style={{ display: "flex" }}>
-                <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
-                  placeholder="e.g. on a wet city street at night, reflections…" autoFocus />
-                <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); }}>Continue →</button>
-              </div>}
-            </>
           )}
+          <div className="qbody" key={answers.length}>
+            {question.note && <div className="adnote"><span className="who">🎨</span><span>{question.note}</span></div>}
+            <div className="qtitle">{question.question}</div>
+            {question.type === "text" ? (
+              <div>
+                <div className="otherbox">
+                  <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
+                    placeholder={question.placeholder || "Type your answer…"} autoFocus />
+                  <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); else if (question.optional) answer(question, "(not needed)", ""); }}>Continue →</button>
+                </div>
+                {question.optional && <span className="chip" style={{ marginTop: 12, display: "inline-block" }} onClick={() => answer(question, "(not needed)", "")}>Skip — not needed on the banner</span>}
+              </div>
+            ) : (
+              <>
+                <div className="cards">
+                  {(question.options || []).map((o, i) =>
+                    <div className={"card" + (o.recommend ? " rec" : "")} key={i} style={{ animationDelay: (i * 55) + "ms" }}
+                      onClick={() => answer(question, o.label, o.prompt_fragment || o.label)}>
+                      <span className="kbd">{i + 1}</span>
+                      <div className="lbl">{o.label}</div>
+                      <div className="frag">{o.prompt_fragment || ""}</div>
+                      {o.recommend && <div className="recbadge">★ My pick</div>}
+                    </div>)}
+                  {!question.no_other &&
+                    <div className="card other" style={{ animationDelay: ((question.options || []).length * 55) + "ms" }} onClick={() => setShowOther(true)}>
+                      <div className="lbl">✎ Other…</div><div className="frag">Describe it in your own words</div>
+                    </div>}
+                </div>
+                {showOther && <div className="otherbox" style={{ display: "flex" }}>
+                  <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && otherText.trim() && answer(question, otherText.trim(), otherText.trim())}
+                    placeholder="e.g. on a wet city street at night, reflections…" autoFocus />
+                  <button className="cta" onClick={() => { const t = otherText.trim(); if (t) answer(question, t, t); }}>Continue →</button>
+                </div>}
+              </>
+            )}
+          </div>
           <div className="finishrow"><button className="ghost" onClick={() => setScreen("s1")}>← Start over</button></div>
-          <div className="hint">Pick an option or choose <b>Other</b> to say it in your words. The art director keeps asking until your brief is detailed enough.</div>
+          <div className="hint">Tap a card or press <b>1–4</b> · choose <b>Other</b> to type your own. Your direction builds up top as you go.</div>
         </section>
       )}
 

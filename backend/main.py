@@ -147,13 +147,15 @@ def next_question(req: NextQReq):
     if not in_tail and cc < prompts.CREATIVE_MAX:
         sys_p = prompts.next_creative_system_prompt()
         try:
+            # Keep asking while core dimensions (product/setting/style) are still uncovered.
+            remaining = prompts._remaining_dims(req.has_image, answers)
             with manager.with_vlm() as vlm:
                 res = vlm.next_creative(sys_p, prompts.next_creative_user_prompt(req.brief, req.has_image, answers))
-                if res.get("done") and cc < prompts.CREATIVE_MIN:
+                if res.get("done") and remaining:
                     res = vlm.next_creative(sys_p, prompts.next_creative_user_prompt(
                         req.brief, req.has_image, answers, force=True))
                 q = res.get("question") if isinstance(res.get("question"), dict) else None
-                # If the proposed topic duplicates a covered one, redirect to a different subject.
+                # If the proposed topic duplicates a covered one, redirect to the next uncovered dimension.
                 if q and not res.get("done") and _dup(q.get("axis") or ""):
                     res = vlm.next_creative(sys_p, prompts.next_creative_user_prompt(
                         req.brief, req.has_image, answers, redirect_from=q.get("axis") or ""))
@@ -164,8 +166,9 @@ def next_question(req: NextQReq):
         q = res.get("question") if isinstance(res.get("question"), dict) else None
         axis = (q or {}).get("axis") or "Creative"
         is_dup = _dup(axis)
-        # Return a creative question unless it still duplicates a covered topic and we already have enough.
-        if not res.get("done") and q and not (is_dup and cc >= prompts.CREATIVE_MIN):
+        # Show the question unless it's a duplicate AND the core dimensions are already covered
+        # (then finish instead of re-asking a covered topic).
+        if not res.get("done") and q and not (is_dup and not remaining):
             qid = str(q.get("id", "")).strip().lower().replace(" ", "_") or f"creative_{cc + 1}"
             if qid in prompts.TAIL_IDS:
                 qid = f"c_{qid}"
