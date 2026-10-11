@@ -762,13 +762,6 @@ export default function Page() {
 
                         <p className="verdict">{crit.verdict || "No critique available."}</p>
 
-                        {finalPrompt && (
-                          <section className="pblock">
-                            <div className="blocklab">Prompt <em>what the image model was given</em></div>
-                            <div className="pb-scene">{finalPrompt}</div>
-                          </section>
-                        )}
-
                         {(crit.suggestions || []).length > 0 && (
                           <section>
                             <div className="blocklab">Make it better
