@@ -78,10 +78,23 @@ button{font-family:inherit}
 .stagger>*:nth-child(6){animation-delay:158ms}
 .stagger>*:nth-child(7){animation-delay:178ms}
 
-.body{padding:48px 22px 64px;max-width:760px;margin:0 auto}
+.body{padding:34px 22px 64px;max-width:800px;margin:0 auto}
 /* the results screen gives the banners nearly the whole window — they are the subject */
 .body.wide{max-width:1680px;padding:24px 24px 110px}
 @media(max-width:620px){.body{padding:28px 16px 40px}.body.wide{padding:18px 14px 110px}}
+
+/* every screen's content sits on the same card as the result banners, so the brief,
+   the interview and the render all read as one surface language. Two levels only:
+   canvas behind, surface for the card, canvas again for controls inside it. */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);
+  padding:36px 32px 32px;box-shadow:0 1px 2px rgba(20,20,23,.04)}
+@media(max-width:620px){.panel{padding:24px 18px 24px}}
+.panel .prompt{background:var(--canvas)}
+.panel .card{background:var(--canvas)}
+.panel .card.on{background:var(--surface)}
+.panel .chip,.panel .dchip,.panel .field input,.panel .promptbox{background:var(--canvas)}
+.panel .promptbox{border-color:var(--line)}
+.panel .pb-scene{background:var(--surface);border:1px solid var(--line)}
 
 .kick{font-size:11px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
   color:var(--m);margin:0 0 16px}
@@ -112,8 +125,9 @@ button{font-family:inherit}
 .rm{border:none;background:none;color:var(--faint);font-size:12px;cursor:pointer;padding:2px 4px}
 .rm:hover{color:var(--bad)}
 
-.tries{margin-top:18px;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
-.tries .lab{font-size:12px;color:var(--faint);margin-right:1px}
+/* the example briefs stay on one row; they ellipsis rather than wrap if space runs out */
+.tries{margin-top:18px;display:flex;flex-wrap:nowrap;gap:7px;align-items:center}
+.tries .chip{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .chip{border:1px solid var(--line2);background:var(--surface);border-radius:var(--r-btn);
   padding:6px 13px;font-size:12.5px;color:var(--dim);letter-spacing:-.008em;white-space:nowrap;
   cursor:pointer;transition:border-color .15s,color .15s}
@@ -197,8 +211,8 @@ button{font-family:inherit}
 .skip:hover{color:var(--ink);border-color:var(--m)}
 
 /* ---------- generating ---------- */
-.gen{padding:56px 22px 70px;max-width:560px;margin:0 auto}
-@media(max-width:620px){.gen{padding:34px 16px 44px}}
+.gen{padding:34px 22px 70px;max-width:620px;margin:0 auto}
+@media(max-width:620px){.gen{padding:22px 16px 44px}}
 .gen-h{font-size:22px;font-weight:560;letter-spacing:-.026em;margin:0 0 6px}
 .gen-s{font-size:13.5px;color:var(--dim);margin:0 0 28px;letter-spacing:-.008em}
 .stages{border-top:1px solid var(--line)}
@@ -220,12 +234,14 @@ button{font-family:inherit}
 .rhead .t{font-size:20px;font-weight:560;letter-spacing:-.026em;margin:0 0 3px}
 .rhead .s{font-size:13px;color:var(--dim);margin:0;letter-spacing:-.008em}
 
-/* the pair IS the screen: two columns hold until genuine phone width */
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+/* the pair IS the screen: two columns hold until genuine phone width.
+   stretch + flex keeps both cards exactly the same height whatever their content. */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
 @media(max-width:560px){.grid2{grid-template-columns:1fr}}
 
 .bcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);
-  overflow:hidden;transition:border-color .2s,box-shadow .2s}
+  overflow:hidden;transition:border-color .2s,box-shadow .2s;
+  display:flex;flex-direction:column}
 .bcard.sel{border-color:var(--m);box-shadow:0 0 0 2px var(--m-tint),0 10px 30px rgba(226,102,42,.14)}
 
 /* each banner carries its own arrange row, directly above its own image */
@@ -256,27 +272,23 @@ button{font-family:inherit}
 .regen .ring{width:28px;height:28px;border-radius:50%;border:2.5px solid rgba(255,255,255,.28);
   border-top-color:#fff;animation:sp .9s linear infinite}
 
-/* compact foot: scores and a disclosure. Text never outweighs the image. */
-.bfoot{display:flex;align-items:center;gap:8px;padding:11px 12px;flex-wrap:wrap}
-.scores{display:flex;flex-wrap:wrap;gap:5px;margin-right:auto}
+.scores{display:flex;flex-wrap:wrap;gap:5px}
 .sp{font-size:11px;padding:3px 9px;border-radius:var(--r-btn);background:var(--soft);
   color:var(--dim);letter-spacing:-.004em;white-space:nowrap;display:inline-flex;
   align-items:center;gap:5px}
 .sp .d{width:5px;height:5px;border-radius:50%;flex:none}
 .sp b{color:var(--ink);font-weight:620;font-variant-numeric:tabular-nums}
 .sp.ov{background:var(--ink);color:#fff}.sp.ov b{color:#fff}
-.disc{border:none;background:none;font-size:12px;color:var(--dim);letter-spacing:-.006em;
-  cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:3px 0}
-.disc:hover{color:var(--ink)}
-.disc .cv{transition:transform .2s}
-.disc.open .cv{transform:rotate(180deg)}
-
-/* notes are capped so the critique can never grow taller than the picture it describes */
-.notes{border-top:1px solid var(--line);padding:13px 14px;background:var(--canvas);
-  max-height:clamp(220px,26vh,340px);overflow-y:auto;
-  animation:vin .3s cubic-bezier(.2,.8,.2,1) both}
-.verdict{font-size:12.5px;color:var(--dim);line-height:1.5;margin:0 0 11px;letter-spacing:-.006em}
-.sugs{list-style:none;padding:0;margin:0 0 14px;display:flex;flex-direction:column;gap:2px}
+/* everything the card has to say lives in the card — nothing hidden, nothing scrolled */
+.bbody{border-top:1px solid var(--line);padding:12px 14px 14px;background:var(--canvas);
+  display:flex;flex-direction:column;gap:13px;flex:1}
+.nacts{margin-top:auto}
+.blocklab{font-size:10.5px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 7px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.blocklab em{font-style:normal;font-weight:500;letter-spacing:-.004em;text-transform:none;font-size:11px}
+.verdict{font-size:12.5px;color:var(--dim);line-height:1.5;margin:0;letter-spacing:-.006em}
+.pblock .pb-scene{font-size:11.5px;background:var(--surface);border:1px solid var(--line)}
+.sugs{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:2px}
 .sug{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;line-height:1.45;
   color:var(--dim);letter-spacing:-.006em;padding:7px 8px;border-radius:8px;cursor:pointer;
   text-align:left;border:none;background:none;width:100%;
@@ -346,18 +358,18 @@ button{font-family:inherit}
 .pb-title{font-weight:620;font-size:12.5px;letter-spacing:-.012em}
 .pb-after{color:var(--faint);font-size:11.5px}
 .pb-scene{font-family:var(--mono);font-size:12px;line-height:1.55;color:var(--dim);
-  max-height:150px;overflow-y:auto;overflow-wrap:anywhere;background:var(--canvas);
-  border-radius:8px;padding:10px 12px}
+  overflow-wrap:anywhere;background:var(--canvas);border-radius:8px;padding:10px 12px}
 .pb-tip{margin-top:10px;color:var(--faint);font-size:11.5px;line-height:1.5}
 .compare{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);
   padding:16px;margin-top:22px}
 .cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
 @media(max-width:620px){.cmp-grid{grid-template-columns:1fr}}
 .cmp-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* before and after end on the same line even when one prompt is far longer */
+.cmp-col .pb-scene{flex:1}
 .cmp-lab{font-size:10.5px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
 .cmp-col.after .cmp-lab{color:var(--m)}
 .cmp-img{width:100%;object-fit:cover;border-radius:9px;border:1px solid var(--line);display:block}
-.compare .pb-scene{max-height:200px}
 
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion:reduce){

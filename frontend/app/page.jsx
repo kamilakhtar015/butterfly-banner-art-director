@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiBase, post } from "../lib/api";
 
-const EXAMPLES = ["fall boot sale for a rugged outdoor brand", "artisan cold brew coffee launch",
-  "luxury scented candle for the holidays", "summer sneaker drop, streetwear", "handmade ceramic mugs, cozy"];
+const EXAMPLES = ["artisan cold brew launch", "summer sneaker drop", "handmade ceramic mugs",
+  "fall boot sale for a rugged outdoor brand", "luxury scented candle for the holidays"];
 const ARRANGE = [["auto", "Auto"], ["left", "Left"], ["center", "Center"], ["right", "Right"], ["bottom", "Bottom"]];
 
 // Stage lists for the loading screen. Elapsed time is measured; the current stage is an
@@ -56,6 +56,95 @@ function scrimFor(place, dark) {
     : `linear-gradient(${right ? "270deg" : "90deg"}, rgba(${c},${a}) 0%, rgba(${c},${a * 0.45}) 40%, transparent 72%)`;
 }
 
+// ---- PNG export: redraw the banner (background + scrim + every text layer) on a canvas
+// at the model's native size, so what downloads is what you see, not the bare render.
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+function wrapLines(ctx, text, maxW) {
+  const out = [];
+  text.split(/\n/).forEach(para => {
+    let line = "";
+    para.split(/\s+/).filter(Boolean).forEach(word => {
+      const t = line ? line + " " + word : word;
+      if (ctx.measureText(t).width > maxW && line) { out.push(line); line = word; }
+      else line = t;
+    });
+    out.push(line);
+  });
+  return out.filter(l => l !== "");
+}
+function fontFor(d, px) {
+  if (d.kind === "headline") return `${px}px '${d.font || "Anton"}', Impact, system-ui, sans-serif`;
+  return `${d.kind === "contact" ? 700 : 800} ${px}px 'ArchivoX', system-ui, sans-serif`;
+}
+function paintScrim(ctx, W, H, place, dark) {
+  const c = dark ? "255,255,255" : "0,0,0", a = dark ? 0.62 : 0.8;
+  const right = place.includes("right"), center = place.includes("center");
+  let g;
+  if (center) {
+    g = ctx.createRadialGradient(W / 2, H / 2, Math.max(W, H) * 0.1, W / 2, H / 2, Math.max(W, H) * 0.68);
+    g.addColorStop(0, `rgba(${c},0)`);
+    g.addColorStop(0.18, `rgba(${c},0)`);
+    g.addColorStop(1, `rgba(${c},${a})`);
+  } else {
+    g = right ? ctx.createLinearGradient(W, 0, 0, 0) : ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, `rgba(${c},${a})`);
+    g.addColorStop(0.40, `rgba(${c},${a * 0.45})`);
+    g.addColorStop(0.72, `rgba(${c},0)`);
+  }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+function drawLayer(ctx, d, W, H) {
+  const px = d.sz * H;
+  const upper = d.kind === "headline" || d.kind === "kicker";
+  const text = upper ? (d.text || "").toUpperCase() : (d.text || "");
+  ctx.font = fontFor(d, px);
+  ctx.textBaseline = "top";
+  if ("letterSpacing" in ctx) {
+    ctx.letterSpacing = d.kind === "kicker" ? `${px * 0.22}px`
+      : d.kind === "headline" ? `${px * 0.02}px` : "0px";
+  }
+  const x0 = ((d.xp || 0) / 100) * W, y0 = ((d.yp || 0) / 100) * H;
+  const at = d.anchor || "left";
+  const place = (w) => at === "right" ? x0 - w : at === "center" ? x0 - w / 2 : x0;
+
+  if (d.kind === "headline") {
+    const lines = wrapLines(ctx, text, W * 0.56), lh = px * 0.95;
+    lines.forEach((ln, i) => {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = px * 0.22; ctx.shadowOffsetY = px * 0.04;
+      ctx.fillStyle = d.color || "#ffffff";
+      ctx.fillText(ln, place(ctx.measureText(ln).width), y0 + i * lh);
+      ctx.restore();
+    });
+    return;
+  }
+  const tw = ctx.measureText(text).width;
+  if (d.bg && (d.kind === "kicker" || d.kind === "cta")) {
+    const padX = px * (d.kind === "cta" ? 1.0 : 0.7), padY = px * (d.kind === "cta" ? 0.5 : 0.35);
+    const bw = tw + padX * 2, bh = px * 1.2 + padY * 2, bx = place(bw);
+    roundRect(ctx, bx, y0, bw, bh, d.kind === "cta" ? bh / 2 : px * 0.25);
+    ctx.fillStyle = d.bg; ctx.fill();
+    ctx.fillStyle = d.color || "#ffffff";
+    ctx.fillText(text, bx + padX, y0 + padY + px * 0.1);
+    return;
+  }
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = px * 0.3;
+  ctx.fillStyle = d.color || "#ffffff";
+  ctx.fillText(text, place(tw), y0);
+  ctx.restore();
+}
+
 function Logo({ size = 23 }) {
   return (
     <svg className="glyph" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
@@ -88,7 +177,6 @@ export default function Page() {
   const [baseline, setBaseline] = useState(null);     // "before" image: the brief rendered as typed
   const [finalPrompt, setFinalPrompt] = useState("");
   const [arranges, setArranges] = useState({});       // per banner, so each arranges independently
-  const [openNotes, setOpenNotes] = useState({});
   const [selBanner, setSelBanner] = useState(null);
   const [regenIdx, setRegenIdx] = useState(null);
   const [err, setErr] = useState("");
@@ -316,6 +404,42 @@ export default function Page() {
 
   const selDef = sel && (els[sel.idx] || []).find(e => e.key === sel.key);
 
+  async function downloadPng(idx, im) {
+    try {
+      const W = size.w, H = size.h;
+      const cv = document.createElement("canvas");
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext("2d");
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = () => rej(new Error("the browser could not read the banner image."));
+        img.src = apiBase() + im.url;
+      });
+      ctx.drawImage(img, 0, 0, W, H);
+
+      const mode = arranges[idx] || "auto";
+      const crit = im.critique || {};
+      const dark = mode === "auto" && ((crit.layout && crit.layout.theme) || "light").toLowerCase() === "dark";
+      paintScrim(ctx, W, H, placeOf(im, mode), dark);
+
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      (els[idx] || []).filter(e => !e.hidden).forEach(d => drawLayer(ctx, d, W, H));
+
+      const blob = await new Promise(r => cv.toBlob(r, "image/png"));
+      if (!blob) throw new Error("the canvas could not be encoded.");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "banner-" + (idx + 1) + ".png";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setErr("PNG export failed: " + e.message + " This usually means the backend did not allow the image to be read across origins.");
+    }
+  }
+
   async function exportPsd(idx, imgUrl) {
     const layout = (images[idx] && images[idx].critique && images[idx].critique.layout) || {};
     try {
@@ -374,7 +498,8 @@ export default function Page() {
         <>
           <Bar />
           <section className="screen">
-            <div className="body stagger">
+            <div className="body">
+              <div className="panel stagger">
               <p className="kick">New brief</p>
               <p className="h-big">What are you trying to sell?</p>
               <p className="sub">A few words is enough.</p>
@@ -402,10 +527,10 @@ export default function Page() {
                 </div>
               </div>
               <div className="tries">
-                <span className="lab">Try</span>
                 {EXAMPLES.slice(0, 3).map(e => (
                   <button className="chip" key={e} onClick={() => setBrief(e)}>{e}</button>
                 ))}
+              </div>
               </div>
               <ErrBox />
             </div>
@@ -419,6 +544,7 @@ export default function Page() {
           <Bar right={<span className="bar-ctx">{brief}</span>} />
           <section className="screen" key={answers.length}>
             <div className="body">
+              <div className="panel">
               <div className="rail">
                 {Array.from({ length: progress.total }).map((_, i) => (
                   <span key={i} className={i < answers.length ? "f" : ""}
@@ -533,6 +659,7 @@ export default function Page() {
                     the image from the detailed prompt your answers build.</div>
                 </div>
               )}
+              </div>
             </div>
           </section>
         </>
@@ -544,6 +671,7 @@ export default function Page() {
           <Bar right={<span className="bar-ctx">{brief}</span>} />
           <section className="screen">
             <div className="gen">
+              <div className="panel">
               <p className="gen-h">{genKind === "render" ? "Art-directing two banners" : "Thinking about your answer"}</p>
               <p className="gen-s">
                 {genKind === "render"
@@ -562,6 +690,7 @@ export default function Page() {
                 <p className="swapnote">The image model and the vision model can&apos;t both fit in
                   memory, so they take turns. The swap above is that pause — expected, not a stall.</p>
               )}
+              </div>
             </div>
           </section>
         </>
@@ -628,41 +757,52 @@ export default function Page() {
                         )}
                       </div>
 
-                      <div className="bfoot">
+                      <div className="bbody">
                         <div className="scores">{scorePills(crit.scores, crit.overall)}</div>
-                        <button className={"disc" + (openNotes[idx] ? " open" : "")}
-                          onClick={() => { setSelBanner(idx); setOpenNotes(o => ({ ...o, [idx]: !o[idx] })); }}>
-                          Notes <span className="cv">⌄</span>
-                        </button>
-                      </div>
 
-                      {openNotes[idx] && (
-                        <div className="notes">
-                          <p className="verdict">{crit.verdict || "No critique available."}</p>
-                          <ul className="sugs">
-                            {(crit.suggestions || []).map((s, i) => {
-                              const key = idx + ":" + i;
-                              const on = !!checked[key];
-                              return (
-                                <li key={i}>
-                                  <button className={"sug" + (on ? " on" : "")}
-                                    onClick={() => setChecked(c => ({ ...c, [key]: on ? "" : (s.prompt_fragment || s.text || "") }))}>
-                                    <span className="box">✓</span>
-                                    <span>{s.text || s.prompt_fragment || ""}</span>
-                                  </button>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                          <div className="nacts">
-                            <button className="btn btn-pri btn-sm" disabled={!nSel || regenIdx !== null}
-                              onClick={() => regenerate(idx)}>
-                              ↻ Regenerate{nSel ? " with " + nSel + " note" + (nSel > 1 ? "s" : "") : ""}
-                            </button>
-                            <button className="btn btn-sec btn-sm" onClick={() => exportPsd(idx, im.url)}>⬇ .PSD</button>
-                          </div>
+                        <p className="verdict">{crit.verdict || "No critique available."}</p>
+
+                        {finalPrompt && (
+                          <section className="pblock">
+                            <div className="blocklab">Prompt <em>what the image model was given</em></div>
+                            <div className="pb-scene">{finalPrompt}</div>
+                          </section>
+                        )}
+
+                        {(crit.suggestions || []).length > 0 && (
+                          <section>
+                            <div className="blocklab">Make it better
+                              <em>{nSel ? nSel + " selected" : "pick any, then regenerate"}</em></div>
+                            <ul className="sugs">
+                              {(crit.suggestions || []).map((sg, i) => {
+                                const key = idx + ":" + i;
+                                const on = !!checked[key];
+                                return (
+                                  <li key={i}>
+                                    <button className={"sug" + (on ? " on" : "")}
+                                      onClick={() => {
+                                        setSelBanner(idx);
+                                        setChecked(c => ({ ...c, [key]: on ? "" : (sg.prompt_fragment || sg.text || "") }));
+                                      }}>
+                                      <span className="box">✓</span>
+                                      <span>{sg.text || sg.prompt_fragment || ""}</span>
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
+                        )}
+
+                        <div className="nacts">
+                          <button className="btn btn-pri btn-sm" disabled={!nSel || regenIdx !== null}
+                            onClick={() => regenerate(idx)}>
+                            ↻ Regenerate{nSel ? " with " + nSel + " note" + (nSel > 1 ? "s" : "") : ""}
+                          </button>
+                          <button className="btn btn-sec btn-sm" onClick={() => downloadPng(idx, im)}>⬇ PNG</button>
+                          <button className="btn btn-sec btn-sm" onClick={() => exportPsd(idx, im.url)}>⬇ PSD</button>
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
