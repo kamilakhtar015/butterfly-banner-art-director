@@ -1,4 +1,4 @@
-# 🦋 Buttrr — Banner Art Director
+# 🦋 ButterFly — Banner Art Director
 
 A **fully-local** AI "art director" that turns a few words (and optionally a product photo) into professional **marketing / advertising banners** — no cloud, no API keys.
 
